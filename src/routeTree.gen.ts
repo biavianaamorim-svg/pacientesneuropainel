@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ImportarRouteImport } from './routes/importar'
+import { Route as RevisaoIaRouteImport } from './routes/revisao-ia'
 import { Route as PacientesIndexRouteImport } from './routes/pacientes.index'
 import { Route as PacientesIdRouteImport } from './routes/pacientes.$id'
 
@@ -30,6 +31,11 @@ const ImportarRoute = ImportarRouteImport.update({
   path: '/importar',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RevisaoIaRoute = RevisaoIaRouteImport.update({
+  id: '/revisao-ia',
+  path: '/revisao-ia',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PacientesIndexRoute = PacientesIndexRouteImport.update({
   id: '/pacientes/',
   path: '/pacientes/',
@@ -45,6 +51,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/importar': typeof ImportarRoute
+  '/revisao-ia': typeof RevisaoIaRoute
   '/pacientes/$id': typeof PacientesIdRoute
   '/pacientes/': typeof PacientesIndexRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/importar': typeof ImportarRoute
+  '/revisao-ia': typeof RevisaoIaRoute
   '/pacientes/$id': typeof PacientesIdRoute
   '/pacientes': typeof PacientesIndexRoute
 }
@@ -60,22 +68,42 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/importar': typeof ImportarRoute
+  '/revisao-ia': typeof RevisaoIaRoute
   '/pacientes/$id': typeof PacientesIdRoute
   '/pacientes/': typeof PacientesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/importar' | '/pacientes/$id' | '/pacientes/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/importar'
+    | '/revisao-ia'
+    | '/pacientes/$id'
+    | '/pacientes/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/importar' | '/pacientes/$id' | '/pacientes'
+  to:
+    | '/'
+    | '/auth'
+    | '/importar'
+    | '/revisao-ia'
+    | '/pacientes/$id'
+    | '/pacientes'
   id:
-    '__root__' | '/' | '/auth' | '/importar' | '/pacientes/$id' | '/pacientes/'
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/importar'
+    | '/revisao-ia'
+    | '/pacientes/$id'
+    | '/pacientes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   ImportarRoute: typeof ImportarRoute
+  RevisaoIaRoute: typeof RevisaoIaRoute
   PacientesIdRoute: typeof PacientesIdRoute
   PacientesIndexRoute: typeof PacientesIndexRoute
 }
@@ -103,6 +131,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImportarRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/revisao-ia': {
+      id: '/revisao-ia'
+      path: '/revisao-ia'
+      fullPath: '/revisao-ia'
+      preLoaderRoute: typeof RevisaoIaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pacientes/': {
       id: '/pacientes/'
       path: '/pacientes'
@@ -124,6 +159,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   ImportarRoute: ImportarRoute,
+  RevisaoIaRoute: RevisaoIaRoute,
   PacientesIdRoute: PacientesIdRoute,
   PacientesIndexRoute: PacientesIndexRoute,
 }
