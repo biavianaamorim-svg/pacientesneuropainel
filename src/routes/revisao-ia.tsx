@@ -79,7 +79,10 @@ function RevisaoIA() {
       suspeitas: p.suspeitas_texto ?? "",
       diagnostico: p.diagnostico_importado_texto ?? "",
     }));
-    if (!linhas.length) return toast.info("Nenhum texto pendente para analisar.");
+    if (!linhas.length) {
+      toast.info("Nenhum texto pendente para analisar.");
+      return;
+    }
     setRodando(true);
     try {
       const res = await sugerirChips({
@@ -143,11 +146,6 @@ function RevisaoIA() {
         suspeitas: criarSuspeita,
         diagnosticos: criarDiagnostico,
       };
-      const tabelas = {
-        regioes: { tabela: "patient_regions", coluna: "region_id" },
-        suspeitas: { tabela: "patient_suspicions", coluna: "suspicion_id" },
-        diagnosticos: { tabela: "patient_diagnoses", coluna: "diagnosis_id" },
-      } as const;
 
       for (const [pid, grupos] of Object.entries(sel)) {
         for (const campo of ["regioes", "suspeitas", "diagnosticos"] as const) {
@@ -160,10 +158,19 @@ function RevisaoIA() {
               vid = novo.id;
               mapas[campo].set(nome.toLowerCase(), novo.id);
             }
-            const { tabela, coluna } = tabelas[campo];
-            await supabase
-              .from(tabela)
-              .upsert({ patient_id: pid, [coluna]: vid }, { ignoreDuplicates: true });
+            if (campo === "regioes") {
+              await supabase
+                .from("patient_regions")
+                .upsert({ patient_id: pid, region_id: vid }, { ignoreDuplicates: true });
+            } else if (campo === "suspeitas") {
+              await supabase
+                .from("patient_suspicions")
+                .upsert({ patient_id: pid, suspicion_id: vid }, { ignoreDuplicates: true });
+            } else {
+              await supabase
+                .from("patient_diagnoses")
+                .upsert({ patient_id: pid, diagnosis_id: vid }, { ignoreDuplicates: true });
+            }
           }
         }
       }

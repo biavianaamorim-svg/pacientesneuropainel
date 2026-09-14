@@ -133,16 +133,27 @@ function PacienteDetalhe() {
       ativo: boolean;
     }) => {
       if (args.ativo) {
-        const { error } = await supabase
-          .from(args.tabela)
-          .delete()
-          .eq("patient_id", id)
-          .eq(args.coluna, args.valor);
+        const q = supabase.from(args.tabela).delete().eq("patient_id", id);
+        const { error } =
+          args.tabela === "patient_regions"
+            ? await q.eq("region_id", args.valor)
+            : args.tabela === "patient_suspicions"
+              ? await q.eq("suspicion_id", args.valor)
+              : await q.eq("diagnosis_id", args.valor);
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from(args.tabela)
-          .insert({ patient_id: id, [args.coluna]: args.valor });
+        const { error } =
+          args.tabela === "patient_regions"
+            ? await supabase
+                .from("patient_regions")
+                .insert({ patient_id: id, region_id: args.valor })
+            : args.tabela === "patient_suspicions"
+              ? await supabase
+                  .from("patient_suspicions")
+                  .insert({ patient_id: id, suspicion_id: args.valor })
+              : await supabase
+                  .from("patient_diagnoses")
+                  .insert({ patient_id: id, diagnosis_id: args.valor });
         if (error) throw error;
       }
     },

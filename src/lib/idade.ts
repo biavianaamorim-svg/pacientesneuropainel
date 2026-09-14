@@ -10,22 +10,22 @@ export function idadeParaMeses(texto: string | null | undefined): number | null 
 
   const anoMatch = t.match(/(\d+(?:[.,]\d+)?)\s*(anos|ano|a\b|y\b)/);
   if (anoMatch) {
-    anos = parseFloat(anoMatch[1].replace(",", "."));
+    anos = parseFloat(anoMatch[1]!.replace(",", "."));
     achou = true;
   }
   const mesMatch = t.match(/(\d+(?:[.,]\d+)?)\s*(meses|mes|mês|m\b)/);
   if (mesMatch) {
-    meses = parseFloat(mesMatch[1].replace(",", "."));
+    meses = parseFloat(mesMatch[1]!.replace(",", "."));
     achou = true;
   }
   const diaMatch = t.match(/(\d+)\s*(dias|dia|d\b)/);
   if (diaMatch && !achou) {
-    return Math.round(parseInt(diaMatch[1], 10) / 30);
+    return Math.round(parseInt(diaMatch[1]!, 10) / 30);
   }
 
   if (!achou) {
     const soNumero = t.match(/^(\d+(?:[.,]\d+)?)$/);
-    if (soNumero) return Math.round(parseFloat(soNumero[1].replace(",", ".")) * 12);
+    if (soNumero) return Math.round(parseFloat(soNumero[1]!.replace(",", ".")) * 12);
     return null;
   }
 
