@@ -118,6 +118,36 @@ export type Database = {
           },
         ]
       }
+      patient_main_suspicions: {
+        Row: {
+          diagnosis_id: string
+          patient_id: string
+        }
+        Insert: {
+          diagnosis_id: string
+          patient_id: string
+        }
+        Update: {
+          diagnosis_id?: string
+          patient_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_main_suspicions_diagnosis_id_fkey"
+            columns: ["diagnosis_id"]
+            isOneToOne: false
+            referencedRelation: "diagnosis_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_main_suspicions_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patient_regions: {
         Row: {
           patient_id: string
