@@ -8,6 +8,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { idadeParaMeses, normalizar } from "@/lib/idade";
+import type { Database } from "@/integrations/supabase/types";
+
+type PatientInsert = Database["public"]["Tables"]["patients"]["Insert"];
 
 export const Route = createFileRoute("/importar")({
   head: () => ({
@@ -62,9 +65,15 @@ function Importar() {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array" });
     const sheetName = wb.SheetNames[0];
-    if (!sheetName) return toast.error("Planilha vazia.");
+    if (!sheetName) {
+      toast.error("Planilha vazia.");
+      return;
+    }
     const rows = XLSX.utils.sheet_to_json<Linha>(wb.Sheets[sheetName]!, { defval: "", raw: false });
-    if (!rows.length) return toast.error("Nenhuma linha encontrada.");
+    if (!rows.length) {
+      toast.error("Nenhuma linha encontrada.");
+      return;
+    }
     setColunas(Object.keys(rows[0]!));
     setLinhas(rows);
   }
@@ -82,7 +91,7 @@ function Importar() {
           r["idade_meses"] = idadeParaMeses(r["idade_texto"]);
         }
         if (!r["paciente"]) r["paciente"] = "Sem nome";
-        return r;
+        return r as unknown as PatientInsert;
       });
 
       for (let i = 0; i < registros.length; i += 200) {
