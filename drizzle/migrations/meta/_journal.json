@@ -15,6 +15,13 @@
       "when": 1789384764071,
       "tag": "0001_tighten_rls_and_function_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789385387253,
+      "tag": "0002_shared_editor_access",
+      "breakpoints": true
     }
   ]
 }
