@@ -70,14 +70,16 @@ function PacienteDetalhe() {
   const links = useQuery({
     queryKey: ["patient-links", id],
     queryFn: async () => {
-      const [r, s, d] = await Promise.all([
+      const [r, s, m, d] = await Promise.all([
         supabase.from("patient_regions").select("region_id").eq("patient_id", id),
         supabase.from("patient_suspicions").select("suspicion_id").eq("patient_id", id),
+        supabase.from("patient_main_suspicions").select("diagnosis_id").eq("patient_id", id),
         supabase.from("patient_diagnoses").select("diagnosis_id").eq("patient_id", id),
       ]);
       return {
         regioes: (r.data ?? []).map((x) => x.region_id),
         suspeitas: (s.data ?? []).map((x) => x.suspicion_id),
+        suspeitasPrincipais: (m.data ?? []).map((x) => x.diagnosis_id),
         diagnosticos: (d.data ?? []).map((x) => x.diagnosis_id),
       };
     },
@@ -127,7 +129,7 @@ function PacienteDetalhe() {
 
   const toggleLink = useMutation({
     mutationFn: async (args: {
-      tabela: "patient_regions" | "patient_suspicions" | "patient_diagnoses";
+      tabela: "patient_regions" | "patient_suspicions" | "patient_main_suspicions" | "patient_diagnoses";
       coluna: "region_id" | "suspicion_id" | "diagnosis_id";
       valor: string;
       ativo: boolean;
@@ -146,11 +148,17 @@ function PacienteDetalhe() {
                   .delete()
                   .eq("patient_id", id)
                   .eq("suspicion_id", args.valor)
-              : await supabase
-                  .from("patient_diagnoses")
-                  .delete()
-                  .eq("patient_id", id)
-                  .eq("diagnosis_id", args.valor);
+              : args.tabela === "patient_main_suspicions"
+                ? await supabase
+                    .from("patient_main_suspicions")
+                    .delete()
+                    .eq("patient_id", id)
+                    .eq("diagnosis_id", args.valor)
+                : await supabase
+                    .from("patient_diagnoses")
+                    .delete()
+                    .eq("patient_id", id)
+                    .eq("diagnosis_id", args.valor);
         if (error) throw error;
       } else {
         const { error } =
@@ -162,9 +170,13 @@ function PacienteDetalhe() {
               ? await supabase
                   .from("patient_suspicions")
                   .insert({ patient_id: id, suspicion_id: args.valor })
-              : await supabase
-                  .from("patient_diagnoses")
-                  .insert({ patient_id: id, diagnosis_id: args.valor });
+              : args.tabela === "patient_main_suspicions"
+                ? await supabase
+                    .from("patient_main_suspicions")
+                    .insert({ patient_id: id, diagnosis_id: args.valor })
+                : await supabase
+                    .from("patient_diagnoses")
+                    .insert({ patient_id: id, diagnosis_id: args.valor });
         if (error) throw error;
       }
     },
@@ -358,6 +370,24 @@ function PacienteDetalhe() {
               })
             }
             onCreate={async (nome) => criarSuspeita.mutateAsync(nome).catch(() => null)}
+          />
+
+          <ChipSelector
+            label="Suspeitas principais"
+            tone="sage"
+            addLabel="Adicionar nova suspeita principal"
+            options={diagnosticos.data ?? []}
+            selected={links.data?.suspeitasPrincipais ?? []}
+            canCreate={isAdmin}
+            onToggle={(did) =>
+              toggleLink.mutate({
+                tabela: "patient_main_suspicions",
+                coluna: "diagnosis_id",
+                valor: did,
+                ativo: (links.data?.suspeitasPrincipais ?? []).includes(did),
+              })
+            }
+            onCreate={async (nome) => criarDiagnostico.mutateAsync(nome).catch(() => null)}
           />
 
           <ChipSelector
