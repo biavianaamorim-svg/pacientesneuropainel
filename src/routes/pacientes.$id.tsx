@@ -129,7 +129,7 @@ function PacienteDetalhe() {
 
   const toggleLink = useMutation({
     mutationFn: async (args: {
-      tabela: "patient_regions" | "patient_suspicions" | "patient_diagnoses";
+      tabela: "patient_regions" | "patient_suspicions" | "patient_main_suspicions" | "patient_diagnoses";
       coluna: "region_id" | "suspicion_id" | "diagnosis_id";
       valor: string;
       ativo: boolean;
@@ -148,11 +148,17 @@ function PacienteDetalhe() {
                   .delete()
                   .eq("patient_id", id)
                   .eq("suspicion_id", args.valor)
-              : await supabase
-                  .from("patient_diagnoses")
-                  .delete()
-                  .eq("patient_id", id)
-                  .eq("diagnosis_id", args.valor);
+              : args.tabela === "patient_main_suspicions"
+                ? await supabase
+                    .from("patient_main_suspicions")
+                    .delete()
+                    .eq("patient_id", id)
+                    .eq("diagnosis_id", args.valor)
+                : await supabase
+                    .from("patient_diagnoses")
+                    .delete()
+                    .eq("patient_id", id)
+                    .eq("diagnosis_id", args.valor);
         if (error) throw error;
       } else {
         const { error } =
@@ -164,9 +170,13 @@ function PacienteDetalhe() {
               ? await supabase
                   .from("patient_suspicions")
                   .insert({ patient_id: id, suspicion_id: args.valor })
-              : await supabase
-                  .from("patient_diagnoses")
-                  .insert({ patient_id: id, diagnosis_id: args.valor });
+              : args.tabela === "patient_main_suspicions"
+                ? await supabase
+                    .from("patient_main_suspicions")
+                    .insert({ patient_id: id, diagnosis_id: args.valor })
+                : await supabase
+                    .from("patient_diagnoses")
+                    .insert({ patient_id: id, diagnosis_id: args.valor });
         if (error) throw error;
       }
     },
