@@ -70,14 +70,16 @@ function PacienteDetalhe() {
   const links = useQuery({
     queryKey: ["patient-links", id],
     queryFn: async () => {
-      const [r, s, d] = await Promise.all([
+      const [r, s, m, d] = await Promise.all([
         supabase.from("patient_regions").select("region_id").eq("patient_id", id),
         supabase.from("patient_suspicions").select("suspicion_id").eq("patient_id", id),
+        supabase.from("patient_main_suspicions").select("diagnosis_id").eq("patient_id", id),
         supabase.from("patient_diagnoses").select("diagnosis_id").eq("patient_id", id),
       ]);
       return {
         regioes: (r.data ?? []).map((x) => x.region_id),
         suspeitas: (s.data ?? []).map((x) => x.suspicion_id),
+        suspeitasPrincipais: (m.data ?? []).map((x) => x.diagnosis_id),
         diagnosticos: (d.data ?? []).map((x) => x.diagnosis_id),
       };
     },
