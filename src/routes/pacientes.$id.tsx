@@ -373,6 +373,24 @@ function PacienteDetalhe() {
           />
 
           <ChipSelector
+            label="Suspeitas principais"
+            tone="sage"
+            addLabel="Adicionar nova suspeita principal"
+            options={diagnosticos.data ?? []}
+            selected={links.data?.suspeitasPrincipais ?? []}
+            canCreate={isAdmin}
+            onToggle={(did) =>
+              toggleLink.mutate({
+                tabela: "patient_main_suspicions",
+                coluna: "diagnosis_id",
+                valor: did,
+                ativo: (links.data?.suspeitasPrincipais ?? []).includes(did),
+              })
+            }
+            onCreate={async (nome) => criarDiagnostico.mutateAsync(nome).catch(() => null)}
+          />
+
+          <ChipSelector
             label="Categoria de diagnóstico"
             tone="blush"
             addLabel="Adicionar novo diagnóstico"
