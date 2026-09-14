@@ -8,6 +8,13 @@
       "when": 1789245927257,
       "tag": "0000_create_neuro_cases_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789384764071,
+      "tag": "0001_tighten_rls_and_function_hardening",
+      "breakpoints": true
     }
   ]
 }

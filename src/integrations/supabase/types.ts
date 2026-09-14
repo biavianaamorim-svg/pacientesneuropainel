@@ -318,6 +318,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_manage_patient: { Args: { _patient_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
