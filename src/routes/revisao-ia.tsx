@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useAllVocab, useCreateVocab } from "@/hooks/useVocab";
 import { useAuth } from "@/hooks/useAuth";
 import { sugerirChips } from "@/lib/ai-import.functions";
+import { classificarCaso } from "@/lib/regras";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/revisao-ia")({
@@ -70,6 +71,44 @@ function RevisaoIA() {
       return data ?? [];
     },
   });
+
+  function reconhecerPorRegras() {
+    const linhas = pendentes.data ?? [];
+    if (!linhas.length) {
+      toast.info("Nenhum texto pendente para reconhecer.");
+      return;
+    }
+    const s: Sugestao[] = linhas.map((p) => {
+      const c = classificarCaso({
+        neuro: p.neurolocalizacao_texto,
+        suspeitas: p.suspeitas_texto,
+        diagnostico: p.diagnostico_importado_texto,
+      });
+      return {
+        id: p.id,
+        regioes: c.regioes,
+        suspeitas: c.suspeitas,
+        diagnosticos: c.diagnosticos,
+        novas_regioes: [],
+        novas_suspeitas: [],
+        novos_diagnosticos: [],
+      };
+    });
+    const comResultado = s.filter(
+      (x) => x.regioes.length || x.suspeitas.length || x.diagnosticos.length,
+    );
+    setSugestoes(comResultado);
+    const inicial: Selecao = {};
+    comResultado.forEach((x) => {
+      inicial[x.id] = {
+        regioes: x.regioes,
+        suspeitas: x.suspeitas,
+        diagnosticos: x.diagnosticos,
+      };
+    });
+    setSel(inicial);
+    toast.success(`${comResultado.length} casos reconhecidos pelas regras.`);
+  }
 
   async function analisar() {
     const linhas = (pendentes.data ?? []).map((p) => ({
@@ -204,6 +243,9 @@ function RevisaoIA() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button className="rounded-full" onClick={reconhecerPorRegras} variant="secondary">
+              <Wand2 className="size-4" /> Reconhecer automaticamente
+            </Button>
             <Button className="rounded-full" onClick={analisar} disabled={rodando}>
               <Sparkles className="size-4" /> {rodando ? "Analisando…" : "Analisar com IA"}
             </Button>

@@ -179,11 +179,31 @@ function PacienteDetalhe() {
                     .insert({ patient_id: id, diagnosis_id: args.valor });
         if (error) throw error;
       }
+
+      // Regras automáticas de status a partir das categorias de diagnóstico
+      if (args.tabela === "patient_diagnoses") {
+        const atuais = links.data?.diagnosticos ?? [];
+        const novos = args.ativo
+          ? atuais.filter((d) => d !== args.valor)
+          : [...atuais, args.valor];
+        const desfecho = paciente.data?.desfecho;
+        const novoStatus: Patient["status_diagnostico"] | null = novos.length
+          ? "fechado"
+          : desfecho === "obito" || desfecho === "eutanasia"
+            ? "sem_seguimento"
+            : null;
+        if (novoStatus && paciente.data?.status_diagnostico !== novoStatus) {
+          await supabase.from("patients").update({ status_diagnostico: novoStatus }).eq("id", id);
+        }
+      }
     },
     onSuccess: () => {
       setSalvo(true);
       setTimeout(() => setSalvo(false), 1200);
       qc.invalidateQueries({ queryKey: ["patient-links", id] });
+      qc.invalidateQueries({ queryKey: ["patient", id] });
+      qc.invalidateQueries({ queryKey: ["patients"] });
+      qc.invalidateQueries({ queryKey: ["patients-abertos"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -315,7 +335,15 @@ function PacienteDetalhe() {
               <Label>Desfecho</Label>
               <Select
                 value={p.desfecho ?? ""}
-                onValueChange={(v) => salvar.mutate({ desfecho: v as Patient["desfecho"] })}
+                onValueChange={(v) => {
+                  const desfecho = v as Patient["desfecho"];
+                  const semDiagnostico = (links.data?.diagnosticos ?? []).length === 0;
+                  const patch: Partial<Patient> = { desfecho };
+                  if ((desfecho === "obito" || desfecho === "eutanasia") && semDiagnostico) {
+                    patch.status_diagnostico = "sem_seguimento";
+                  }
+                  salvar.mutate(patch);
+                }}
               >
                 <SelectTrigger className="h-11">
                   <SelectValue placeholder="Selecionar" />

@@ -7,6 +7,13 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAllVocab } from "@/hooks/useVocab";
 import { mesesParaTexto } from "@/lib/idade";
 import { cn } from "@/lib/utils";
@@ -37,6 +44,7 @@ type Filtro = {
   status: string[];
   desfecho: string[];
   especie: string[];
+  raca: string;
   idadeMin: string;
   idadeMax: string;
   dataDe: string;
@@ -50,6 +58,7 @@ const filtroVazio: Filtro = {
   status: [],
   desfecho: [],
   especie: [],
+  raca: "",
   idadeMin: "",
   idadeMax: "",
   dataDe: "",
@@ -100,6 +109,18 @@ function Painel() {
     [dados.data],
   );
 
+  const racas = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (dados.data?.pacientes ?? [])
+            .map((p) => (p.raca ?? "").trim())
+            .filter((r) => r.length > 0),
+        ),
+      ).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [dados.data],
+  );
+
   const filtrados = useMemo(() => {
     const d = dados.data;
     if (!d) return [];
@@ -132,6 +153,7 @@ function Painel() {
         if (f.status.length && !f.status.includes(p.status_diagnostico)) return false;
         if (f.desfecho.length && !f.desfecho.includes(p.desfecho ?? "")) return false;
         if (f.especie.length && !f.especie.includes(p.especie ?? "")) return false;
+        if (f.raca && (p.raca ?? "").trim() !== f.raca) return false;
         if (f.idadeMin && (p.idade_meses ?? -1) < Number(f.idadeMin)) return false;
         if (f.idadeMax && (p.idade_meses ?? 1e9) > Number(f.idadeMax)) return false;
         if (f.dataDe && (p.data_atendimento ?? "") < f.dataDe) return false;
@@ -273,6 +295,25 @@ function Painel() {
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Raça</Label>
+              <Select
+                value={f.raca === "" ? "__todas" : f.raca}
+                onValueChange={(v) => setF({ ...f, raca: v === "__todas" ? "" : v })}
+              >
+                <SelectTrigger className="h-11">
+                  <SelectValue placeholder="Todas as raças" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__todas">Todas as raças</SelectItem>
+                  {racas.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label>Idade mínima (meses)</Label>
               <Input
