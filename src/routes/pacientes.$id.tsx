@@ -335,7 +335,15 @@ function PacienteDetalhe() {
               <Label>Desfecho</Label>
               <Select
                 value={p.desfecho ?? ""}
-                onValueChange={(v) => salvar.mutate({ desfecho: v as Patient["desfecho"] })}
+                onValueChange={(v) => {
+                  const desfecho = v as Patient["desfecho"];
+                  const semDiagnostico = (links.data?.diagnosticos ?? []).length === 0;
+                  const patch: Partial<Patient> = { desfecho };
+                  if ((desfecho === "obito" || desfecho === "eutanasia") && semDiagnostico) {
+                    patch.status_diagnostico = "sem_seguimento";
+                  }
+                  salvar.mutate(patch);
+                }}
               >
                 <SelectTrigger className="h-11">
                   <SelectValue placeholder="Selecionar" />
