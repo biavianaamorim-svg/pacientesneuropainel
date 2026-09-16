@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,20 +15,32 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/revisao-ia")({
   head: () => ({
     meta: [
-      { title: "Revisão assistida por IA — NeuroVet Casos" },
+      { title: "Reconhecimento automático — NeuroVet Casos" },
       {
         name: "description",
-        content: "Revise em lote as sugestões de região, suspeita e diagnóstico antes de salvar.",
+        content:
+          "Reconheça região, suspeita e diagnóstico de todos os casos já cadastrados e revise antes de salvar.",
       },
-      { property: "og:title", content: "Revisão assistida por IA — NeuroVet Casos" },
+      { property: "og:title", content: "Reconhecimento automático — NeuroVet Casos" },
       {
         property: "og:description",
-        content: "Revise em lote as sugestões de chips antes de salvar nos casos.",
+        content: "Aplique as regras de palavras-chave a todos os casos já cadastrados.",
       },
     ],
   }),
   component: RevisaoIA,
 });
+
+type CasoTexto = {
+  id: string;
+  codigo_publicacao: string;
+  paciente: string;
+  desfecho: string | null;
+  status_diagnostico: string;
+  neurolocalizacao_texto: string | null;
+  suspeitas_texto: string | null;
+  diagnostico_importado_texto: string | null;
+};
 
 type Sugestao = {
   id: string;
@@ -42,6 +54,21 @@ type Sugestao = {
 
 type Selecao = Record<string, { regioes: string[]; suspeitas: string[]; diagnosticos: string[] }>;
 
+async function buscarTudo<T>(
+  consulta: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const tudo: T[] = [];
+  const passo = 1000;
+  for (let de = 0; ; de += passo) {
+    const { data, error } = await consulta(de, de + passo - 1);
+    if (error) throw error as Error;
+    const bloco = data ?? [];
+    tudo.push(...bloco);
+    if (bloco.length < passo) break;
+  }
+  return tudo;
+}
+
 function RevisaoIA() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
@@ -53,73 +80,179 @@ function RevisaoIA() {
   const [sel, setSel] = useState<Selecao>({});
   const [rodando, setRodando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [previa, setPrevia] = useState(false);
+  const [aplicando, setAplicando] = useState(false);
+  const [progresso, setProgresso] = useState(0);
 
-  const pendentes = useQuery({
-    queryKey: ["pendentes-ia"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("patients")
-        .select(
-          "id, codigo_publicacao, paciente, neurolocalizacao_texto, suspeitas_texto, diagnostico_importado_texto",
-        )
-        .or(
-          "neurolocalizacao_texto.not.is.null,suspeitas_texto.not.is.null,diagnostico_importado_texto.not.is.null",
-        )
-        .order("codigo_publicacao")
-        .limit(60);
-      if (error) throw error;
-      return data ?? [];
-    },
+  const casos = useQuery({
+    queryKey: ["casos-com-texto"],
+    queryFn: async (): Promise<CasoTexto[]> =>
+      buscarTudo<CasoTexto>((de, ate) =>
+        supabase
+          .from("patients")
+          .select(
+            "id, codigo_publicacao, paciente, desfecho, status_diagnostico, neurolocalizacao_texto, suspeitas_texto, diagnostico_importado_texto",
+          )
+          .or(
+            "neurolocalizacao_texto.not.is.null,suspeitas_texto.not.is.null,diagnostico_importado_texto.not.is.null",
+          )
+          .order("codigo_publicacao")
+          .range(de, ate),
+      ),
+    staleTime: 60_000,
   });
 
-  function reconhecerPorRegras() {
-    const linhas = pendentes.data ?? [];
-    if (!linhas.length) {
-      toast.info("Nenhum texto pendente para reconhecer.");
-      return;
-    }
-    const s: Sugestao[] = linhas.map((p) => {
-      const c = classificarCaso({
+  const analise = useMemo(() => {
+    const lista = (casos.data ?? []).map((p) => ({
+      caso: p,
+      ...classificarCaso({
         neuro: p.neurolocalizacao_texto,
         suspeitas: p.suspeitas_texto,
         diagnostico: p.diagnostico_importado_texto,
-      });
-      return {
-        id: p.id,
-        regioes: c.regioes,
-        suspeitas: c.suspeitas,
-        diagnosticos: c.diagnosticos,
-        novas_regioes: [],
-        novas_suspeitas: [],
-        novos_diagnosticos: [],
+      }),
+    }));
+    return {
+      lista,
+      comRegiao: lista.filter((x) => x.regioes.length).length,
+      comSuspeita: lista.filter((x) => x.suspeitas.length).length,
+      comDiagnostico: lista.filter((x) => x.diagnosticos.length).length,
+      semNada: lista.filter(
+        (x) => !x.regioes.length && !x.suspeitas.length && !x.diagnosticos.length,
+      ),
+    };
+  }, [casos.data]);
+
+  async function aplicarTudo() {
+    setAplicando(true);
+    setProgresso(0);
+    try {
+      const idPorNome = (lista: { id: string; nome: string }[]) =>
+        new Map(lista.map((v) => [v.nome.toLowerCase(), v.id]));
+      const mapas = {
+        regioes: idPorNome(regioes.data ?? []),
+        suspeitas: idPorNome(suspeitas.data ?? []),
+        diagnosticos: idPorNome(diagnosticos.data ?? []),
       };
-    });
-    const comResultado = s.filter(
-      (x) => x.regioes.length || x.suspeitas.length || x.diagnosticos.length,
-    );
-    setSugestoes(comResultado);
-    const inicial: Selecao = {};
-    comResultado.forEach((x) => {
-      inicial[x.id] = {
-        regioes: x.regioes,
-        suspeitas: x.suspeitas,
-        diagnosticos: x.diagnosticos,
+      const criadores = {
+        regioes: criarRegiao,
+        suspeitas: criarSuspeita,
+        diagnosticos: criarDiagnostico,
       };
-    });
-    setSel(inicial);
-    toast.success(`${comResultado.length} casos reconhecidos pelas regras.`);
+
+      const linhasR: { patient_id: string; region_id: string }[] = [];
+      const linhasS: { patient_id: string; suspicion_id: string }[] = [];
+      const linhasD: { patient_id: string; diagnosis_id: string }[] = [];
+      const comDiagnostico = new Set<string>();
+
+      for (const item of analise.lista) {
+        for (const campo of ["regioes", "suspeitas", "diagnosticos"] as const) {
+          for (const nome of item[campo]) {
+            let vid = mapas[campo].get(nome.toLowerCase());
+            if (!vid) {
+              if (!isAdmin) continue;
+              const novo = await criadores[campo].mutateAsync(nome).catch(() => null);
+              if (!novo) continue;
+              vid = novo.id;
+              mapas[campo].set(nome.toLowerCase(), novo.id);
+            }
+            if (campo === "regioes") linhasR.push({ patient_id: item.caso.id, region_id: vid });
+            else if (campo === "suspeitas")
+              linhasS.push({ patient_id: item.caso.id, suspicion_id: vid });
+            else {
+              linhasD.push({ patient_id: item.caso.id, diagnosis_id: vid });
+              comDiagnostico.add(item.caso.id);
+            }
+          }
+        }
+      }
+
+      const total = linhasR.length + linhasS.length + linhasD.length || 1;
+      let feitas = 0;
+      const lote = 500;
+
+      for (let i = 0; i < linhasR.length; i += lote) {
+        const { error } = await supabase
+          .from("patient_regions")
+          .upsert(linhasR.slice(i, i + lote), { ignoreDuplicates: true });
+        if (error) throw error;
+        feitas += Math.min(lote, linhasR.length - i);
+        setProgresso(Math.round((feitas / total) * 100));
+      }
+      for (let i = 0; i < linhasS.length; i += lote) {
+        const { error } = await supabase
+          .from("patient_suspicions")
+          .upsert(linhasS.slice(i, i + lote), { ignoreDuplicates: true });
+        if (error) throw error;
+        feitas += Math.min(lote, linhasS.length - i);
+        setProgresso(Math.round((feitas / total) * 100));
+      }
+      for (let i = 0; i < linhasD.length; i += lote) {
+        const { error } = await supabase
+          .from("patient_diagnoses")
+          .upsert(linhasD.slice(i, i + lote), { ignoreDuplicates: true });
+        if (error) throw error;
+        feitas += Math.min(lote, linhasD.length - i);
+        setProgresso(Math.round((feitas / total) * 100));
+      }
+
+      // Regras de status: com diagnóstico → fechado; óbito/eutanásia sem diagnóstico → sem seguimento
+      const jaTinhaDiagnostico = new Set(
+        (
+          await buscarTudo<{ patient_id: string }>((de, ate) =>
+            supabase.from("patient_diagnoses").select("patient_id").range(de, ate),
+          )
+        ).map((x) => x.patient_id),
+      );
+      const fechados: string[] = [];
+      const semSeguimento: string[] = [];
+      for (const item of analise.lista) {
+        const temDiag = comDiagnostico.has(item.caso.id) || jaTinhaDiagnostico.has(item.caso.id);
+        if (temDiag) {
+          if (item.caso.status_diagnostico !== "fechado") fechados.push(item.caso.id);
+        } else if (
+          (item.caso.desfecho === "obito" || item.caso.desfecho === "eutanasia") &&
+          item.caso.status_diagnostico !== "sem_seguimento"
+        ) {
+          semSeguimento.push(item.caso.id);
+        }
+      }
+      for (let i = 0; i < fechados.length; i += 200) {
+        const { error } = await supabase
+          .from("patients")
+          .update({ status_diagnostico: "fechado" })
+          .in("id", fechados.slice(i, i + 200));
+        if (error) throw error;
+      }
+      for (let i = 0; i < semSeguimento.length; i += 200) {
+        const { error } = await supabase
+          .from("patients")
+          .update({ status_diagnostico: "sem_seguimento" })
+          .in("id", semSeguimento.slice(i, i + 200));
+        if (error) throw error;
+      }
+
+      setProgresso(100);
+      toast.success(
+        `Marcações aplicadas: ${linhasR.length} regiões, ${linhasS.length} suspeitas e ${linhasD.length} diagnósticos.`,
+      );
+      qc.invalidateQueries();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setAplicando(false);
+    }
   }
 
-  async function analisar() {
-    const linhas = (pendentes.data ?? []).map((p) => ({
-      id: p.id,
-      paciente: p.paciente,
-      neuro: p.neurolocalizacao_texto ?? "",
-      suspeitas: p.suspeitas_texto ?? "",
-      diagnostico: p.diagnostico_importado_texto ?? "",
+  async function analisarComIA() {
+    const linhas = analise.semNada.slice(0, 15).map((x) => ({
+      id: x.caso.id,
+      paciente: x.caso.paciente,
+      neuro: x.caso.neurolocalizacao_texto ?? "",
+      suspeitas: x.caso.suspeitas_texto ?? "",
+      diagnostico: x.caso.diagnostico_importado_texto ?? "",
     }));
     if (!linhas.length) {
-      toast.info("Nenhum texto pendente para analisar.");
+      toast.info("Nenhum caso sem correspondência para analisar.");
       return;
     }
     setRodando(true);
@@ -152,11 +285,7 @@ function RevisaoIA() {
     }
   }
 
-  function alternar(
-    pid: string,
-    campo: "regioes" | "suspeitas" | "diagnosticos",
-    nome: string,
-  ) {
+  function alternar(pid: string, campo: "regioes" | "suspeitas" | "diagnosticos", nome: string) {
     setSel((prev) => {
       const atual = prev[pid] ?? { regioes: [], suspeitas: [], diagnosticos: [] };
       const lista = atual[campo];
@@ -170,7 +299,7 @@ function RevisaoIA() {
     });
   }
 
-  async function salvar() {
+  async function salvarSugestoesIA() {
     setSalvando(true);
     try {
       const idPorNome = (lista: { id: string; nome: string }[]) =>
@@ -209,6 +338,10 @@ function RevisaoIA() {
               await supabase
                 .from("patient_diagnoses")
                 .upsert({ patient_id: pid, diagnosis_id: vid }, { ignoreDuplicates: true });
+              await supabase
+                .from("patients")
+                .update({ status_diagnostico: "fechado" })
+                .eq("id", pid);
             }
           }
         }
@@ -224,7 +357,7 @@ function RevisaoIA() {
     }
   }
 
-  const porId = new Map((pendentes.data ?? []).map((p) => [p.id, p]));
+  const porId = new Map((casos.data ?? []).map((p) => [p.id, p]));
   const existe = {
     regioes: new Set((regioes.data ?? []).map((r) => r.nome.toLowerCase())),
     suspeitas: new Set((suspeitas.data ?? []).map((r) => r.nome.toLowerCase())),
@@ -234,33 +367,103 @@ function RevisaoIA() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Revisão assistida por IA</h1>
-            <p className="text-sm text-muted-foreground">
-              {pendentes.data?.length ?? 0} casos com texto livre importado. Nada é salvo antes da
-              sua confirmação.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button className="rounded-full" onClick={reconhecerPorRegras} variant="secondary">
-              <Wand2 className="size-4" /> Reconhecer automaticamente
+        <div>
+          <h1 className="text-2xl font-semibold">Reconhecimento automático</h1>
+          <p className="text-sm text-muted-foreground">
+            {casos.isLoading
+              ? "Carregando casos…"
+              : `${casos.data?.length ?? 0} casos já cadastrados têm texto livre da planilha. Nada é apagado: as marcações são somadas às existentes.`}
+          </p>
+        </div>
+
+        <div className="surface space-y-4 p-6">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              className="rounded-full"
+              onClick={() => setPrevia(true)}
+              disabled={casos.isLoading || !casos.data?.length}
+            >
+              <Wand2 className="size-4" /> Reconhecer tudo
             </Button>
-            <Button className="rounded-full" onClick={analisar} disabled={rodando}>
-              <Sparkles className="size-4" /> {rodando ? "Analisando…" : "Analisar com IA"}
-            </Button>
-            {sugestoes.length > 0 && (
+            {previa && (
               <Button
                 variant="outline"
                 className="rounded-full"
-                onClick={salvar}
-                disabled={salvando}
+                onClick={aplicarTudo}
+                disabled={aplicando}
               >
-                {salvando ? "Salvando…" : "Aplicar selecionados"}
+                {aplicando ? `Aplicando… ${progresso}%` : "Aplicar aos casos"}
               </Button>
             )}
           </div>
+
+          {previa && (
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Cartao titulo="Com região" valor={analise.comRegiao} />
+              <Cartao titulo="Com suspeita" valor={analise.comSuspeita} />
+              <Cartao titulo="Com diagnóstico" valor={analise.comDiagnostico} />
+              <Cartao titulo="Sem correspondência" valor={analise.semNada.length} />
+            </div>
+          )}
+
+          {aplicando && (
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-sage transition-all"
+                style={{ width: `${progresso}%` }}
+              />
+            </div>
+          )}
         </div>
+
+        {previa && analise.semNada.length > 0 && (
+          <div className="surface space-y-3 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-muted-foreground">
+                Casos sem correspondência ({analise.semNada.length})
+              </h2>
+              <Button
+                variant="secondary"
+                className="rounded-full"
+                onClick={analisarComIA}
+                disabled={rodando}
+              >
+                <Sparkles className="size-4" />
+                {rodando ? "Analisando…" : "Analisar 15 com IA"}
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {analise.semNada.slice(0, 60).map((x) => (
+                <Link
+                  key={x.caso.id}
+                  to="/pacientes/$id"
+                  params={{ id: x.caso.id }}
+                  className="chip-base hover:bg-muted"
+                >
+                  {x.caso.codigo_publicacao} · {x.caso.paciente}
+                </Link>
+              ))}
+            </div>
+            {analise.semNada.length > 60 && (
+              <p className="text-xs text-muted-foreground">
+                Mostrando os 60 primeiros. Os demais aparecem conforme você resolve estes.
+              </p>
+            )}
+          </div>
+        )}
+
+        {sugestoes.length > 0 && (
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={salvarSugestoesIA}
+              disabled={salvando}
+            >
+              {salvando ? "Salvando…" : "Aplicar sugestões da IA"}
+            </Button>
+          </div>
+        )}
 
         {!isAdmin && sugestoes.length > 0 && (
           <p className="rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
@@ -315,6 +518,15 @@ function RevisaoIA() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function Cartao({ titulo, valor }: { titulo: string; valor: number }) {
+  return (
+    <div className="rounded-xl bg-muted/60 p-4">
+      <p className="text-xs text-muted-foreground">{titulo}</p>
+      <p className="text-xl font-semibold">{valor}</p>
+    </div>
   );
 }
 

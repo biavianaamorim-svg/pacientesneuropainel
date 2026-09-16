@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -18,12 +18,12 @@ export const Route = createFileRoute("/importar")({
       { title: "Importar planilha — NeuroVet Casos" },
       {
         name: "description",
-        content: "Importe casos em CSV ou XLSX com cálculo automático de idade em meses.",
+        content: "Importe casos em CSV ou XLSX sem duplicar os que já estão cadastrados.",
       },
       { property: "og:title", content: "Importar planilha — NeuroVet Casos" },
       {
         property: "og:description",
-        content: "Importe casos em CSV ou XLSX com cálculo automático de idade em meses.",
+        content: "Importe casos em CSV ou XLSX sem duplicar os que já estão cadastrados.",
       },
     ],
   }),
@@ -54,12 +54,68 @@ function chave(h: string) {
   return normalizar(h).replace(/[^a-z]/g, "");
 }
 
+/** Chave de comparação entre planilha e casos já cadastrados. */
+function chaveCaso(r: { codigo?: unknown; paciente?: unknown; tutor?: unknown }) {
+  const codigo = normalizar(String(r.codigo ?? ""));
+  if (codigo) return `cod:${codigo}`;
+  return `nome:${normalizar(String(r.paciente ?? ""))}|${normalizar(String(r.tutor ?? ""))}`;
+}
+
 function Importar() {
   const [linhas, setLinhas] = useState<Linha[]>([]);
   const [colunas, setColunas] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
+
+  const existentes = useQuery({
+    queryKey: ["chaves-existentes"],
+    queryFn: async () => {
+      const chaves = new Set<string>();
+      const passo = 1000;
+      for (let de = 0; ; de += passo) {
+        const { data, error } = await supabase
+          .from("patients")
+          .select("codigo, paciente, tutor")
+          .range(de, de + passo - 1);
+        if (error) throw error;
+        const bloco = data ?? [];
+        bloco.forEach((p) => chaves.add(chaveCaso(p)));
+        if (bloco.length < passo) break;
+      }
+      return chaves;
+    },
+    staleTime: 60_000,
+  });
+
+  const registros = useMemo(() => {
+    return linhas.map((l) => {
+      const r: Record<string, string | number | null> = {};
+      for (const [h, v] of Object.entries(l)) {
+        const campo = mapa[chave(h)];
+        if (campo && String(v).trim()) r[campo] = String(v).trim();
+      }
+      if (typeof r["idade_texto"] === "string") {
+        r["idade_meses"] = idadeParaMeses(r["idade_texto"]);
+      }
+      if (!r["paciente"]) r["paciente"] = "Sem nome";
+      return r;
+    });
+  }, [linhas]);
+
+  const novas = useMemo(() => {
+    const set = existentes.data;
+    if (!set) return registros;
+    const vistos = new Set<string>();
+    return registros.filter((r) => {
+      const k = chaveCaso(r);
+      if (set.has(k) || vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    });
+  }, [registros, existentes.data]);
+
+  const repetidas = registros.length - novas.length;
 
   async function onFile(file: File) {
     const buf = await file.arrayBuffer();
@@ -78,28 +134,20 @@ function Importar() {
     setLinhas(rows);
   }
 
-  async function importar() {
+  async function importar(somenteNovas: boolean) {
+    const alvo = (somenteNovas ? novas : registros) as unknown as PatientInsert[];
+    if (!alvo.length) {
+      toast.info("Nada para importar.");
+      return;
+    }
     setSalvando(true);
     try {
-      const registros = linhas.map((l) => {
-        const r: Record<string, string | number | null> = {};
-        for (const [h, v] of Object.entries(l)) {
-          const campo = mapa[chave(h)];
-          if (campo && String(v).trim()) r[campo] = String(v).trim();
-        }
-        if (typeof r["idade_texto"] === "string") {
-          r["idade_meses"] = idadeParaMeses(r["idade_texto"]);
-        }
-        if (!r["paciente"]) r["paciente"] = "Sem nome";
-        return r as unknown as PatientInsert;
-      });
-
-      for (let i = 0; i < registros.length; i += 200) {
-        const { error } = await supabase.from("patients").insert(registros.slice(i, i + 200));
+      for (let i = 0; i < alvo.length; i += 200) {
+        const { error } = await supabase.from("patients").insert(alvo.slice(i, i + 200));
         if (error) throw error;
       }
       qc.invalidateQueries();
-      toast.success(`${registros.length} pacientes importados.`);
+      toast.success(`${alvo.length} pacientes importados.`);
       navigate({ to: "/revisao-ia" });
     } catch (e) {
       toast.error((e as Error).message);
@@ -114,8 +162,8 @@ function Importar() {
         <div>
           <h1 className="text-2xl font-semibold">Importar planilha</h1>
           <p className="text-sm text-muted-foreground">
-            Aceita CSV e XLSX. Idade é convertida em meses automaticamente e cada caso recebe um
-            código sequencial.
+            Aceita CSV e XLSX. Idade é convertida em meses automaticamente, cada caso recebe um
+            código sequencial e linhas já cadastradas são identificadas antes de salvar.
           </p>
         </div>
 
@@ -139,14 +187,38 @@ function Importar() {
 
         {linhas.length > 0 && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">
-                Pré-visualização de {Math.min(linhas.length, 20)} de {linhas.length} linhas
+            <div className="surface space-y-3 p-6">
+              <p className="text-sm">
+                <strong>{linhas.length}</strong> linhas na planilha ·{" "}
+                <strong>{novas.length}</strong> novas ·{" "}
+                <strong>{repetidas}</strong> já cadastradas
               </p>
-              <Button className="rounded-full" disabled={salvando} onClick={importar}>
-                {salvando ? "Importando…" : `Importar ${linhas.length} pacientes`}
-              </Button>
+              <p className="text-xs text-muted-foreground">
+                A comparação usa o código de origem quando existe; caso contrário, nome do paciente
+                + tutor.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="rounded-full"
+                  disabled={salvando || existentes.isLoading || !novas.length}
+                  onClick={() => importar(true)}
+                >
+                  {salvando ? "Importando…" : `Importar só os novos (${novas.length})`}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="rounded-full"
+                  disabled={salvando}
+                  onClick={() => importar(false)}
+                >
+                  Importar tudo ({linhas.length})
+                </Button>
+              </div>
             </div>
+
+            <p className="text-sm text-muted-foreground">
+              Pré-visualização de {Math.min(linhas.length, 20)} de {linhas.length} linhas
+            </p>
             <div className="surface overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
