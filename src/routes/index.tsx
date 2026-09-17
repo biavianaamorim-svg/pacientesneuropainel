@@ -65,7 +65,49 @@ const filtroVazio: Filtro = {
   dataAte: "",
 };
 
-function Painel() {
+const PATIENT_COLS =
+  "id, codigo_publicacao, paciente, tutor, especie, raca, sexo, idade_meses, status_diagnostico, desfecho, data_atendimento, data_desfecho, diagnostico_texto_livre";
+
+type PacienteLinha = {
+  id: string;
+  codigo_publicacao: string;
+  paciente: string;
+  tutor: string | null;
+  especie: string | null;
+  raca: string | null;
+  sexo: string | null;
+  idade_meses: number | null;
+  status_diagnostico: string;
+  desfecho: string | null;
+  data_atendimento: string | null;
+  data_desfecho: string | null;
+  diagnostico_texto_livre: string | null;
+};
+
+const BLOCO = 1000;
+
+// PostgREST devolve no máximo 1.000 linhas por requisição: percorre em blocos.
+async function buscarTudo<T>(
+  tabela: "patients" | "patient_regions" | "patient_suspicions" | "patient_diagnoses",
+  colunas: string,
+  ordem: string,
+): Promise<T[]> {
+  const todos: T[] = [];
+  for (let inicio = 0; ; inicio += BLOCO) {
+    const { data, error } = await supabase
+      .from(tabela)
+      .select(colunas)
+      .order(ordem)
+      .range(inicio, inicio + BLOCO - 1);
+    if (error) throw error;
+    const lote = (data ?? []) as unknown as T[];
+    todos.push(...lote);
+    if (lote.length < BLOCO) break;
+  }
+  return todos;
+}
+
+
   const [f, setF] = useState<Filtro>(filtroVazio);
   const { regioes, suspeitas, diagnosticos } = useAllVocab();
 
