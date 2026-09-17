@@ -356,6 +356,20 @@ export type Database = {
         }
         Returns: boolean
       }
+      search_patients: {
+        Args: { deslocamento?: number; limite?: number; termo?: string }
+        Returns: {
+          codigo_publicacao: string
+          data_atendimento: string
+          especie: string
+          id: string
+          idade_meses: number
+          paciente: string
+          status_diagnostico: Database["public"]["Enums"]["status_diagnostico"]
+          total_count: number
+          tutor: string
+        }[]
+      }
       unaccent: { Args: { "": string }; Returns: string }
     }
     Enums: {
