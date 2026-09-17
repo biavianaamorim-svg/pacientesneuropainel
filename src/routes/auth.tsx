@@ -37,6 +37,17 @@ function AuthPage() {
     if (session) navigate({ to: "/" });
   }, [session, navigate]);
 
+  function mensagemErro(err: unknown) {
+    const m = err instanceof Error ? err.message : "";
+    if (/weak|pwned/i.test(m)) return "Essa senha é muito comum. Escolha uma senha mais forte.";
+    if (/Invalid login credentials/i.test(m)) return "E-mail ou senha incorretos.";
+    if (/Email not confirmed/i.test(m))
+      return "Confirme seu e-mail pelo link que enviamos antes de entrar.";
+    if (/already registered/i.test(m)) return "Já existe uma conta com esse e-mail.";
+    if (/at least/i.test(m)) return "A senha precisa ter pelo menos 6 caracteres.";
+    return m || "Não foi possível continuar.";
+  }
+
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setCarregando(true);
@@ -54,10 +65,10 @@ function AuthPage() {
           },
         });
         if (error) throw error;
-        toast.success("Conta criada. Confira seu e-mail se for pedida confirmação.");
+        toast.success("Conta criada! Enviamos um link de confirmação para o seu e-mail.");
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Não foi possível continuar.");
+      toast.error(mensagemErro(err));
     } finally {
       setCarregando(false);
     }
