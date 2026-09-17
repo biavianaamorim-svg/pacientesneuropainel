@@ -65,10 +65,10 @@ function AuthPage() {
           },
         });
         if (error) throw error;
-        toast.success("Conta criada. Confira seu e-mail se for pedida confirmação.");
+        toast.success("Conta criada! Enviamos um link de confirmação para o seu e-mail.");
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Não foi possível continuar.");
+      toast.error(mensagemErro(err));
     } finally {
       setCarregando(false);
     }
