@@ -72,26 +72,33 @@ function Painel() {
   const dados = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => {
-      const [p, pr, ps, pd] = await Promise.all([
-        supabase
-          .from("patients")
-          .select(
-            "id, codigo_publicacao, paciente, tutor, especie, raca, sexo, idade_meses, status_diagnostico, desfecho, data_atendimento, data_desfecho, diagnostico_texto_livre",
-          )
-          .order("codigo_publicacao"),
-        supabase.from("patient_regions").select("patient_id, region_id"),
-        supabase.from("patient_suspicions").select("patient_id, suspicion_id"),
-        supabase.from("patient_diagnoses").select("patient_id, diagnosis_id"),
+      const [pacientes, regioesLink, suspeitasLink, diagnosticosLink] = await Promise.all([
+        buscarTudo<PacienteLinha>("patients", PATIENT_COLS, "codigo_publicacao"),
+        buscarTudo<{ patient_id: string; region_id: string }>(
+          "patient_regions",
+          "patient_id, region_id",
+          "patient_id",
+        ),
+        buscarTudo<{ patient_id: string; suspicion_id: string }>(
+          "patient_suspicions",
+          "patient_id, suspicion_id",
+          "patient_id",
+        ),
+        buscarTudo<{ patient_id: string; diagnosis_id: string }>(
+          "patient_diagnoses",
+          "patient_id, diagnosis_id",
+          "patient_id",
+        ),
       ]);
-      if (p.error) throw p.error;
       return {
-        pacientes: p.data ?? [],
-        regioes: pr.data ?? [],
-        suspeitas: ps.data ?? [],
-        diagnosticos: pd.data ?? [],
+        pacientes,
+        regioes: regioesLink,
+        suspeitas: suspeitasLink,
+        diagnosticos: diagnosticosLink,
       };
     },
   });
+
 
   const nomePorId = useMemo(() => {
     const m = new Map<string, string>();
