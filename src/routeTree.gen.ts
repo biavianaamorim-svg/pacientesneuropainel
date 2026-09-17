@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AnalisesRouteImport } from './routes/analises'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ImportarRouteImport } from './routes/importar'
 import { Route as RevisaoIaRouteImport } from './routes/revisao-ia'
@@ -19,6 +20,11 @@ import { Route as PacientesIdRouteImport } from './routes/pacientes.$id'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalisesRoute = AnalisesRouteImport.update({
+  id: '/analises',
+  path: '/analises',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -49,6 +55,7 @@ const PacientesIdRoute = PacientesIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analises': typeof AnalisesRoute
   '/auth': typeof AuthRoute
   '/importar': typeof ImportarRoute
   '/revisao-ia': typeof RevisaoIaRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analises': typeof AnalisesRoute
   '/auth': typeof AuthRoute
   '/importar': typeof ImportarRoute
   '/revisao-ia': typeof RevisaoIaRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analises': typeof AnalisesRoute
   '/auth': typeof AuthRoute
   '/importar': typeof ImportarRoute
   '/revisao-ia': typeof RevisaoIaRoute
@@ -76,6 +85,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/analises'
     | '/auth'
     | '/importar'
     | '/revisao-ia'
@@ -84,6 +94,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/analises'
     | '/auth'
     | '/importar'
     | '/revisao-ia'
@@ -92,6 +103,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/analises'
     | '/auth'
     | '/importar'
     | '/revisao-ia'
@@ -101,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalisesRoute: typeof AnalisesRoute
   AuthRoute: typeof AuthRoute
   ImportarRoute: typeof ImportarRoute
   RevisaoIaRoute: typeof RevisaoIaRoute
@@ -115,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analises': {
+      id: '/analises'
+      path: '/analises'
+      fullPath: '/analises'
+      preLoaderRoute: typeof AnalisesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -157,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalisesRoute: AnalisesRoute,
   AuthRoute: AuthRoute,
   ImportarRoute: ImportarRoute,
   RevisaoIaRoute: RevisaoIaRoute,

@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +16,7 @@ import {
 import { useAllVocab } from "@/hooks/useVocab";
 import { mesesParaTexto } from "@/lib/idade";
 import { cn } from "@/lib/utils";
+import { buscarPacientesParaAnalise, buscarRelacoesPaciente, temTexto } from "@/lib/patient-data";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -49,6 +49,7 @@ type Filtro = {
   idadeMax: string;
   dataDe: string;
   dataAte: string;
+  pendencia: string;
 };
 
 const filtroVazio: Filtro = {
@@ -63,85 +64,28 @@ const filtroVazio: Filtro = {
   idadeMax: "",
   dataDe: "",
   dataAte: "",
+  pendencia: "",
 };
-
-const PATIENT_COLS =
-  "id, codigo_publicacao, paciente, tutor, especie, raca, sexo, idade_meses, status_diagnostico, desfecho, data_atendimento, data_desfecho, diagnostico_texto_livre";
-
-type PacienteLinha = {
-  id: string;
-  codigo_publicacao: string;
-  paciente: string;
-  tutor: string | null;
-  especie: string | null;
-  raca: string | null;
-  sexo: string | null;
-  idade_meses: number | null;
-  status_diagnostico: string;
-  desfecho: string | null;
-  data_atendimento: string | null;
-  data_desfecho: string | null;
-  diagnostico_texto_livre: string | null;
-};
-
-const BLOCO = 1000;
-
-// PostgREST devolve no máximo 1.000 linhas por requisição: percorre em blocos.
-async function buscarTudo<T>(
-  tabela: "patients" | "patient_regions" | "patient_suspicions" | "patient_diagnoses",
-  colunas: string,
-  ordem: string,
-): Promise<T[]> {
-  const todos: T[] = [];
-  for (let inicio = 0; ; inicio += BLOCO) {
-    const { data, error } = await supabase
-      .from(tabela)
-      .select(colunas)
-      .order(ordem)
-      .range(inicio, inicio + BLOCO - 1);
-    if (error) throw error;
-    const lote = (data ?? []) as unknown as T[];
-    todos.push(...lote);
-    if (lote.length < BLOCO) break;
-  }
-  return todos;
-}
 
 function Painel() {
-
   const [f, setF] = useState<Filtro>(filtroVazio);
   const { regioes, suspeitas, diagnosticos } = useAllVocab();
 
   const dados = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => {
-      const [pacientes, regioesLink, suspeitasLink, diagnosticosLink] = await Promise.all([
-        buscarTudo<PacienteLinha>("patients", PATIENT_COLS, "codigo_publicacao"),
-        buscarTudo<{ patient_id: string; region_id: string }>(
-          "patient_regions",
-          "patient_id, region_id",
-          "patient_id",
-        ),
-        buscarTudo<{ patient_id: string; suspicion_id: string }>(
-          "patient_suspicions",
-          "patient_id, suspicion_id",
-          "patient_id",
-        ),
-        buscarTudo<{ patient_id: string; diagnosis_id: string }>(
-          "patient_diagnoses",
-          "patient_id, diagnosis_id",
-          "patient_id",
-        ),
+      const [pacientes, [regioes, suspeitas, diagnosticos]] = await Promise.all([
+        buscarPacientesParaAnalise(),
+        buscarRelacoesPaciente(),
       ]);
       return {
         pacientes,
-        regioes: regioesLink,
-        suspeitas: suspeitasLink,
-        diagnosticos: diagnosticosLink,
+        regioes,
+        suspeitas,
+        diagnosticos,
       };
     },
   });
-
 
   const nomePorId = useMemo(() => {
     const m = new Map<string, string>();
@@ -208,6 +152,12 @@ function Painel() {
         if (f.idadeMax && (p.idade_meses ?? 1e9) > Number(f.idadeMax)) return false;
         if (f.dataDe && (p.data_atendimento ?? "") < f.dataDe) return false;
         if (f.dataAte && (p.data_atendimento ?? "9999") > f.dataAte) return false;
+        const semSuspeita = p._suspeitas.length === 0;
+        const semRegiao = p._regioes.length === 0;
+        if (f.pendencia === "sem_suspeita" && !semSuspeita) return false;
+        if (f.pendencia === "sem_regiao" && !semRegiao) return false;
+        if (f.pendencia === "sem_as_duas" && (!semSuspeita || !semRegiao)) return false;
+        if (f.pendencia === "completos" && (semSuspeita || semRegiao)) return false;
         return true;
       });
   }, [dados.data, f]);
@@ -337,6 +287,20 @@ function Painel() {
               onToggle={(v) => toggle("desfecho", v)}
             />
             <GrupoChips
+              titulo="Cadastro pendente"
+              tone="sage"
+              itens={[
+                { v: "sem_suspeita", label: "Sem suspeita" },
+                { v: "sem_regiao", label: "Sem região" },
+                { v: "sem_as_duas", label: "Sem as duas" },
+                { v: "completos", label: "Completos" },
+              ]}
+              sel={f.pendencia ? [f.pendencia] : []}
+              onToggle={(v) =>
+                setF((prev) => ({ ...prev, pendencia: prev.pendencia === v ? "" : v }))
+              }
+            />
+            <GrupoChips
               titulo="Espécie"
               tone="blush"
               itens={especies.map((e) => ({ v: e, label: e }))}
@@ -423,9 +387,7 @@ function Painel() {
               </span>
               <span className="min-w-36 flex-1 font-medium">{p.paciente}</span>
               <span className="text-sm text-muted-foreground">{p.especie ?? "—"}</span>
-              <span className="text-sm text-muted-foreground">
-                {mesesParaTexto(p.idade_meses)}
-              </span>
+              <span className="text-sm text-muted-foreground">{mesesParaTexto(p.idade_meses)}</span>
               <span className="text-sm text-muted-foreground">
                 {p._diagnosticos.map((id) => nomePorId.get(id)).join(", ") || "sem diagnóstico"}
               </span>
