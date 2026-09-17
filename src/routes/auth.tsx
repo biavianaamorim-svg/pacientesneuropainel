@@ -37,6 +37,17 @@ function AuthPage() {
     if (session) navigate({ to: "/" });
   }, [session, navigate]);
 
+  function mensagemErro(err: unknown) {
+    const m = err instanceof Error ? err.message : "";
+    if (/weak|pwned/i.test(m)) return "Essa senha é muito comum. Escolha uma senha mais forte.";
+    if (/Invalid login credentials/i.test(m)) return "E-mail ou senha incorretos.";
+    if (/Email not confirmed/i.test(m))
+      return "Confirme seu e-mail pelo link que enviamos antes de entrar.";
+    if (/already registered/i.test(m)) return "Já existe uma conta com esse e-mail.";
+    if (/at least/i.test(m)) return "A senha precisa ter pelo menos 6 caracteres.";
+    return m || "Não foi possível continuar.";
+  }
+
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setCarregando(true);
