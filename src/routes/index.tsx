@@ -107,6 +107,7 @@ async function buscarTudo<T>(
   return todos;
 }
 
+function Painel() {
 
   const [f, setF] = useState<Filtro>(filtroVazio);
   const { regioes, suspeitas, diagnosticos } = useAllVocab();
