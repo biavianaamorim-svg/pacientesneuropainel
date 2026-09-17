@@ -29,6 +29,13 @@
       "when": 1789385827535,
       "tag": "0003_create_patient_main_suspicions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789649896781,
+      "tag": "0004_search_patients_rpc",
+      "breakpoints": true
     }
   ]
 }

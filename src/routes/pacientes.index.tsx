@@ -1,14 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { mesesParaTexto, normalizar } from "@/lib/idade";
+import { mesesParaTexto } from "@/lib/idade";
 
 export const Route = createFileRoute("/pacientes/")({
   head: () => ({
@@ -31,35 +31,45 @@ const statusTone: Record<string, string> = {
   sem_seguimento: "bg-muted text-muted-foreground",
 };
 
+const PAGE_SIZE = 50;
+
 function PacientesPage() {
   const [busca, setBusca] = useState("");
+  const [termo, setTermo] = useState("");
+  const [pagina, setPagina] = useState(1);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: pacientes = [], isLoading } = useQuery({
-    queryKey: ["patients"],
+  // Debounce da busca; qualquer mudança volta para a página 1.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setTermo(busca.trim());
+      setPagina(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [busca]);
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ["patients", termo, pagina],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("patients")
-        .select(
-          "id, codigo_publicacao, paciente, tutor, especie, idade_meses, status_diagnostico, data_atendimento",
-        )
-        .order("codigo_publicacao");
+      const { data, error } = await supabase.rpc("search_patients", {
+        termo,
+        limite: PAGE_SIZE,
+        deslocamento: (pagina - 1) * PAGE_SIZE,
+      });
       if (error) throw error;
-      return data ?? [];
+      const linhas = data ?? [];
+      return {
+        linhas,
+        total: Number(linhas[0]?.total_count ?? 0),
+      };
     },
   });
 
-  const filtrados = useMemo(() => {
-    const t = normalizar(busca);
-    if (!t) return pacientes;
-    return pacientes.filter(
-      (p) =>
-        normalizar(p.paciente ?? "").includes(t) ||
-        normalizar(p.tutor ?? "").includes(t) ||
-        normalizar(p.codigo_publicacao ?? "").includes(t),
-    );
-  }, [busca, pacientes]);
+  const linhas = data?.linhas ?? [];
+  const total = data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const novo = useMutation({
     mutationFn: async () => {
@@ -84,7 +94,9 @@ function PacientesPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold">Pacientes</h1>
-            <p className="text-sm text-muted-foreground">{pacientes.length} casos cadastrados</p>
+            <p className="text-sm text-muted-foreground">
+              {total} {termo ? "casos encontrados" : "casos cadastrados"}
+            </p>
           </div>
           <Button size="lg" className="rounded-full" onClick={() => novo.mutate()}>
             <Plus className="size-4" /> Novo paciente
@@ -103,10 +115,10 @@ function PacientesPage() {
 
         <div className="surface divide-y divide-border overflow-hidden">
           {isLoading && <p className="p-6 text-sm text-muted-foreground">Carregando…</p>}
-          {!isLoading && filtrados.length === 0 && (
+          {!isLoading && linhas.length === 0 && (
             <p className="p-6 text-sm text-muted-foreground">Nenhum paciente encontrado.</p>
           )}
-          {filtrados.map((p) => (
+          {linhas.map((p) => (
             <Link
               key={p.id}
               to="/pacientes/$id"
@@ -129,6 +141,31 @@ function PacientesPage() {
               </Badge>
             </Link>
           ))}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Página {pagina} de {totalPaginas}
+            {isFetching && !isLoading ? " · atualizando…" : ""}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={pagina <= 1}
+              onClick={() => setPagina((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="size-4" /> Anterior
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={pagina >= totalPaginas}
+              onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+            >
+              Próxima <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </AppShell>

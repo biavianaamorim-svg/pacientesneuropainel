@@ -65,33 +65,83 @@ const filtroVazio: Filtro = {
   dataAte: "",
 };
 
+const PATIENT_COLS =
+  "id, codigo_publicacao, paciente, tutor, especie, raca, sexo, idade_meses, status_diagnostico, desfecho, data_atendimento, data_desfecho, diagnostico_texto_livre";
+
+type PacienteLinha = {
+  id: string;
+  codigo_publicacao: string;
+  paciente: string;
+  tutor: string | null;
+  especie: string | null;
+  raca: string | null;
+  sexo: string | null;
+  idade_meses: number | null;
+  status_diagnostico: string;
+  desfecho: string | null;
+  data_atendimento: string | null;
+  data_desfecho: string | null;
+  diagnostico_texto_livre: string | null;
+};
+
+const BLOCO = 1000;
+
+// PostgREST devolve no máximo 1.000 linhas por requisição: percorre em blocos.
+async function buscarTudo<T>(
+  tabela: "patients" | "patient_regions" | "patient_suspicions" | "patient_diagnoses",
+  colunas: string,
+  ordem: string,
+): Promise<T[]> {
+  const todos: T[] = [];
+  for (let inicio = 0; ; inicio += BLOCO) {
+    const { data, error } = await supabase
+      .from(tabela)
+      .select(colunas)
+      .order(ordem)
+      .range(inicio, inicio + BLOCO - 1);
+    if (error) throw error;
+    const lote = (data ?? []) as unknown as T[];
+    todos.push(...lote);
+    if (lote.length < BLOCO) break;
+  }
+  return todos;
+}
+
 function Painel() {
+
   const [f, setF] = useState<Filtro>(filtroVazio);
   const { regioes, suspeitas, diagnosticos } = useAllVocab();
 
   const dados = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => {
-      const [p, pr, ps, pd] = await Promise.all([
-        supabase
-          .from("patients")
-          .select(
-            "id, codigo_publicacao, paciente, tutor, especie, raca, sexo, idade_meses, status_diagnostico, desfecho, data_atendimento, data_desfecho, diagnostico_texto_livre",
-          )
-          .order("codigo_publicacao"),
-        supabase.from("patient_regions").select("patient_id, region_id"),
-        supabase.from("patient_suspicions").select("patient_id, suspicion_id"),
-        supabase.from("patient_diagnoses").select("patient_id, diagnosis_id"),
+      const [pacientes, regioesLink, suspeitasLink, diagnosticosLink] = await Promise.all([
+        buscarTudo<PacienteLinha>("patients", PATIENT_COLS, "codigo_publicacao"),
+        buscarTudo<{ patient_id: string; region_id: string }>(
+          "patient_regions",
+          "patient_id, region_id",
+          "patient_id",
+        ),
+        buscarTudo<{ patient_id: string; suspicion_id: string }>(
+          "patient_suspicions",
+          "patient_id, suspicion_id",
+          "patient_id",
+        ),
+        buscarTudo<{ patient_id: string; diagnosis_id: string }>(
+          "patient_diagnoses",
+          "patient_id, diagnosis_id",
+          "patient_id",
+        ),
       ]);
-      if (p.error) throw p.error;
       return {
-        pacientes: p.data ?? [],
-        regioes: pr.data ?? [],
-        suspeitas: ps.data ?? [],
-        diagnosticos: pd.data ?? [],
+        pacientes,
+        regioes: regioesLink,
+        suspeitas: suspeitasLink,
+        diagnosticos: diagnosticosLink,
       };
     },
   });
+
 
   const nomePorId = useMemo(() => {
     const m = new Map<string, string>();
