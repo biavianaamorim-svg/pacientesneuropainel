@@ -1,12 +1,13 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { Brain, LayoutDashboard, PawPrint, Upload, Wand2, LogOut } from "lucide-react";
+import { Brain, LayoutDashboard, PawPrint, Upload, Wand2, LogOut, BarChart3 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
 const links = [
   { to: "/", label: "Painel", icon: LayoutDashboard },
   { to: "/pacientes", label: "Pacientes", icon: PawPrint },
+  { to: "/analises", label: "Análises", icon: BarChart3 },
   { to: "/importar", label: "Importar", icon: Upload },
   { to: "/revisao-ia", label: "Reconhecimento", icon: Wand2 },
 ] as const;
